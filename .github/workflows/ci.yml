@@ -17,26 +17,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Set up Java (necessário para projetos Spring Boot)
-      - name: Setup JDK
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin' # Tipo de JDK
-          java-version: '17'     # Altere para a versão compatível com seu projeto
 
-      # Cache Maven dependencies para acelerar builds futuros
-      - name: Cache Maven dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # Build e execução de testes
-      - name: Build and Test
-        run: mvn clean test
+      - name: Construir a imagem Docker
+        run: docker build -t jwt-validation-app .
 
-      # Executar a aplicação (opcional, para verificar execução)
-      - name: Run Application
-        run: mvn spring-boot:run
+      - name: 🚀 Rodar a aplicação e testar
+        run: |
+            docker run -d -p 8080:8080 --name jwt-container jwt-validation-app
+            sleep 10  # Aguarda a aplicação subir
+            curl -X POST "http://localhost:8080/api/jwt/validate" -H "Content-Type: application/json" -d "{ \"token\": \"eyJhbGciOiJIUzI1NiJ9.eyJSb2xlIjoiQWRtaW4iLCJTZWVkIjoiNzg0MSIsIk5hbWUiOiJUb25pbmhvIEFyYXVqbyJ9.QY05sIjtrcJnP533kQNk8QXcaleJ1Q01jWY_ZzIZuAg" }"
+  deploy:
+      needs: build
+      runs-on: ubuntu-latest
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+      steps:
+        - name: 📥 Checkout do repositório
+          uses: actions/checkout@v3
+
+        - name: 🔑 Login no Docker Hub
+          uses: docker/login-action@v3
+          with:
+            username: ${{ secrets.DOCKER_USERNAME }}
+            password: ${{ secrets.DOCKER_PASSWORD }}
+
+        - name: 🏗️ Construir e enviar a imagem para o Docker Hub
+          run: |
+            docker build -t ${{ secrets.DOCKER_USERNAME }}/jwt-validation-app:latest .
+            docker push ${{ secrets.DOCKER_USERNAME }}/jwt-validation-app:latest
